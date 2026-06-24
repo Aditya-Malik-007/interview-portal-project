@@ -18,7 +18,7 @@ function CreatePost() {
     setError('');
     try {
       await axios.post(
-        'http://localhost:4000/api/experiences',
+        'https://interview-portal-project-1.onrender.com/api/experiences',
         { company, role, status, content },
         { withCredentials: true }
       );
