@@ -3,6 +3,7 @@ import { StrictMode } from 'react';
 import { createRoot } from 'react-dom/client';
 import axios from 'axios';
 axios.defaults.withCredentials = true;
+axios.defaults.baseURL = 'https://interview-portal-project-1.onrender.com';
 import App from './App.jsx';
 
 createRoot(document.getElementById('root')).render(

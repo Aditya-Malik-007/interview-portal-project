@@ -11,7 +11,7 @@ function Feed({ isAuthenticated }) {
   useEffect(() => {
     const fetchPosts = async () => {
       try {
-        const response = await axios.get('https://interview-portal-project-1.onrender.com/api/experiences');
+        const response = await axios.get('/api/experiences');
         setPosts(response.data);
       } catch (err) {
         console.error('Failed to fetch posts:', err);

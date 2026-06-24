@@ -11,8 +11,8 @@ function Profile({ user }) {
     const fetchData = async () => {
       try {
         const [profileRes, postsRes] = await Promise.all([
-          axios.get('https://interview-portal-project-1.onrender.com/api/me', { withCredentials: true }),
-          axios.get('https://interview-portal-project-1.onrender.com/api/my-posts', { withCredentials: true }),
+          axios.get('/api/me', { withCredentials: true }),
+          axios.get('/api/my-posts', { withCredentials: true }),
         ]);
         setProfile(profileRes.data.user);
         setPostCount(postsRes.data.length);

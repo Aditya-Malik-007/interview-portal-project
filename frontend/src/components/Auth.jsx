@@ -27,7 +27,7 @@ function Auth({ onLoginSuccess, initialIsLogin }) {
     try {
       if (isLogin) {
         const res = await axios.post(
-          'https://interview-portal-project-1.onrender.com/login',
+          '/login',
           { email, password },
           { withCredentials: true }
         );
@@ -39,7 +39,7 @@ function Auth({ onLoginSuccess, initialIsLogin }) {
         }, 800);
       } else {
         const res = await axios.post(
-          'https://interview-portal-project-1.onrender.com/register',
+          '/register',
           { email, password, branch, name },
           { withCredentials: true }
         );
