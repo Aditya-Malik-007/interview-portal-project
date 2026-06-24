@@ -15,30 +15,31 @@ function App() {
   const [isCheckingAuth, setIsCheckingAuth] = useState(true);
 
   useEffect(() => {
-    const checkSession = async () => {
-      try {
-        const res = await axios.get('/api/check-auth', { withCredentials: true });
-        setIsAuthenticated(true);
-        setUser(res.data.user);
-      } catch {
-        setIsAuthenticated(false);
-        setUser(null);
-      } finally {
-        setIsCheckingAuth(false);
-      }
-    };
-    checkSession();
+    const token = localStorage.getItem('token');
+    const savedUser = localStorage.getItem('user');
+    if (token && savedUser) {
+      axios.defaults.headers.common['Authorization'] = `Bearer ${token}`;
+      setIsAuthenticated(true);
+      setUser(JSON.parse(savedUser));
+    }
+    setIsCheckingAuth(false);
   }, []);
 
-  const handleLoginSuccess = (userData) => {
+  const handleLoginSuccess = (userData, token) => {
+    localStorage.setItem('token', token);
+    localStorage.setItem('user', JSON.stringify(userData));
+    axios.defaults.headers.common['Authorization'] = `Bearer ${token}`;
     setIsAuthenticated(true);
     setUser(userData);
   };
 
   const handleLogout = async () => {
     try {
-      await axios.post('/logout', {}, { withCredentials: true });
+      await axios.post('/logout');
     } catch {}
+    localStorage.removeItem('token');
+    localStorage.removeItem('user');
+    delete axios.defaults.headers.common['Authorization'];
     setIsAuthenticated(false);
     setUser(null);
   };
@@ -56,12 +57,10 @@ function App() {
     <Router>
       <Navbar isAuthenticated={isAuthenticated} user={user} onLogout={handleLogout} />
       <Routes>
-        {/* Landing page - shown to all, but redirects logged-in users to /feed */}
         <Route path="/" element={
           isAuthenticated ? <Navigate to="/feed" /> : <LandingPage />
         } />
 
-        {/* Auth routes */}
         <Route path="/login" element={
           isAuthenticated ? <Navigate to="/feed" /> :
           <Auth initialIsLogin={true} onLoginSuccess={handleLoginSuccess} />
@@ -71,10 +70,8 @@ function App() {
           <Auth initialIsLogin={false} onLoginSuccess={handleLoginSuccess} />
         } />
 
-        {/* Feed - public */}
         <Route path="/feed" element={<Feed isAuthenticated={isAuthenticated} />} />
 
-        {/* Protected routes */}
         <Route path="/create" element={
           isAuthenticated ? <CreatePost /> : <Navigate to="/login" />
         } />
@@ -85,7 +82,6 @@ function App() {
           isAuthenticated ? <Profile user={user} /> : <Navigate to="/login" />
         } />
 
-        {/* Fallback */}
         <Route path="*" element={<Navigate to="/" />} />
       </Routes>
     </Router>

@@ -3,11 +3,12 @@ import cors from 'cors';
 import dotenv from 'dotenv';
 import pg from 'pg';
 import bcrypt from 'bcrypt';
-import session from 'express-session';
+import jwt from 'jsonwebtoken';
 
 dotenv.config();
 const app = express();
 const PORT = process.env.PORT || 4000;
+const JWT_SECRET = process.env.JWT_SECRET;
 
 const db = new pg.Pool({
     user: process.env.PG_USER,
@@ -23,12 +24,18 @@ app.use(cors({
 }));
 app.use(express.json());
 
-app.use(session({
-    secret: process.env.SESSION_SECRET,
-    resave: false,
-    saveUninitialized: false,
-    cookie: { secure: true, sameSite: 'none', maxAge: 1000 * 60 * 60 * 24 }
-}));
+// JWT auth middleware
+const verifyToken = (req, res, next) => {
+    const authHeader = req.headers['authorization'];
+    const token = authHeader && authHeader.split(' ')[1];
+    if (!token) return res.status(401).json({ error: 'Unauthorized.' });
+    try {
+        req.user = jwt.verify(token, JWT_SECRET);
+        next();
+    } catch {
+        return res.status(401).json({ error: 'Invalid or expired token.' });
+    }
+};
 
 // REGISTER
 app.post('/register', async (req, res) => {
@@ -40,8 +47,7 @@ app.post('/register', async (req, res) => {
             return res.status(400).json({ error: "Email already exists." });
         }
 
-        const saltRounds = 10;
-        const hash = await bcrypt.hash(password, saltRounds);
+        const hash = await bcrypt.hash(password, 10);
 
         const result = await db.query(
             "INSERT INTO users (email, password_hash, branch, name) VALUES ($1, $2, $3, $4) RETURNING id, email, branch, name",
@@ -49,8 +55,13 @@ app.post('/register', async (req, res) => {
         );
 
         const newUser = result.rows[0];
-        req.session.user = { id: newUser.id, email: newUser.email, branch: newUser.branch, name: newUser.name };
-        res.status(201).json({ message: "Registered successfully!", user: req.session.user });
+        const token = jwt.sign(
+            { id: newUser.id, email: newUser.email, branch: newUser.branch, name: newUser.name },
+            JWT_SECRET,
+            { expiresIn: '7d' }
+        );
+
+        res.status(201).json({ message: "Registered successfully!", token, user: newUser });
 
     } catch (err) {
         console.error(err);
@@ -74,8 +85,10 @@ app.post('/login', async (req, res) => {
             return res.status(401).json({ error: "Incorrect password." });
         }
 
-        req.session.user = { id: user.id, email: user.email, branch: user.branch, name: user.name || null };
-        res.status(200).json({ message: "Logged in successfully!", user: req.session.user });
+        const userData = { id: user.id, email: user.email, branch: user.branch, name: user.name || null };
+        const token = jwt.sign(userData, JWT_SECRET, { expiresIn: '7d' });
+
+        res.status(200).json({ message: "Logged in successfully!", token, user: userData });
 
     } catch (err) {
         console.error(err);
@@ -83,31 +96,22 @@ app.post('/login', async (req, res) => {
     }
 });
 
-// LOGOUT
+// LOGOUT (client handles token removal; nothing to do server-side)
 app.post('/logout', (req, res) => {
-    req.session.destroy((err) => {
-        if (err) return res.status(500).json({ error: "Logout failed." });
-        res.clearCookie('connect.sid');
-        res.status(200).json({ message: "Logged out successfully." });
-    });
+    res.status(200).json({ message: "Logged out successfully." });
 });
 
 // CHECK AUTH
-app.get('/api/check-auth', (req, res) => {
-    if (req.session.user) {
-        res.status(200).json({ user: req.session.user });
-    } else {
-        res.status(401).json({ error: "Not logged in" });
-    }
+app.get('/api/check-auth', verifyToken, (req, res) => {
+    res.status(200).json({ user: req.user });
 });
 
 // GET MY PROFILE
-app.get('/api/me', async (req, res) => {
-    if (!req.session.user) return res.status(401).json({ error: "Unauthorized." });
+app.get('/api/me', verifyToken, async (req, res) => {
     try {
         const result = await db.query(
             "SELECT id, email, name, branch, created_at FROM users WHERE id = $1",
-            [req.session.user.id]
+            [req.user.id]
         );
         if (result.rows.length === 0) return res.status(404).json({ error: "User not found." });
         res.status(200).json({ user: result.rows[0] });
@@ -136,12 +140,11 @@ app.get('/api/experiences', async (req, res) => {
 });
 
 // FETCH MY POSTS (dashboard)
-app.get('/api/my-posts', async (req, res) => {
-    if (!req.session.user) return res.status(401).json({ error: "Unauthorized." });
+app.get('/api/my-posts', verifyToken, async (req, res) => {
     try {
         const result = await db.query(
             "SELECT * FROM posts WHERE user_id = $1 ORDER BY created_at DESC",
-            [req.session.user.id]
+            [req.user.id]
         );
         res.status(200).json(result.rows);
     } catch (err) {
@@ -151,13 +154,9 @@ app.get('/api/my-posts', async (req, res) => {
 });
 
 // CREATE POST
-app.post('/api/experiences', async (req, res) => {
+app.post('/api/experiences', verifyToken, async (req, res) => {
     try {
-        if (!req.session.user) {
-            return res.status(401).json({ error: "Unauthorized. Please login first." });
-        }
         const { company, role, content, status } = req.body;
-        const userId = req.session.user.id;
 
         if (!company || !role || !content || !status) {
             return res.status(400).json({ error: "All fields are required." });
@@ -165,7 +164,7 @@ app.post('/api/experiences', async (req, res) => {
 
         const result = await db.query(
             "INSERT INTO posts (user_id, company, role, content, status) VALUES ($1, $2, $3, $4, $5) RETURNING *",
-            [userId, company, role, content, status]
+            [req.user.id, company, role, content, status]
         );
         res.status(201).json({ message: "Post created successfully!", post: result.rows[0] });
     } catch (err) {
@@ -175,16 +174,14 @@ app.post('/api/experiences', async (req, res) => {
 });
 
 // EDIT POST (owner only)
-app.put('/api/experiences/:id', async (req, res) => {
-    if (!req.session.user) return res.status(401).json({ error: "Unauthorized." });
+app.put('/api/experiences/:id', verifyToken, async (req, res) => {
     try {
         const { id } = req.params;
         const { company, role, content, status } = req.body;
-        const userId = req.session.user.id;
 
         const check = await db.query("SELECT user_id FROM posts WHERE id = $1", [id]);
         if (check.rows.length === 0) return res.status(404).json({ error: "Post not found." });
-        if (check.rows[0].user_id !== userId) return res.status(403).json({ error: "Forbidden." });
+        if (check.rows[0].user_id !== req.user.id) return res.status(403).json({ error: "Forbidden." });
 
         const result = await db.query(
             "UPDATE posts SET company=$1, role=$2, content=$3, status=$4 WHERE id=$5 RETURNING *",
@@ -198,15 +195,13 @@ app.put('/api/experiences/:id', async (req, res) => {
 });
 
 // DELETE POST (owner only)
-app.delete('/api/experiences/:id', async (req, res) => {
-    if (!req.session.user) return res.status(401).json({ error: "Unauthorized." });
+app.delete('/api/experiences/:id', verifyToken, async (req, res) => {
     try {
         const { id } = req.params;
-        const userId = req.session.user.id;
 
         const check = await db.query("SELECT user_id FROM posts WHERE id = $1", [id]);
         if (check.rows.length === 0) return res.status(404).json({ error: "Post not found." });
-        if (check.rows[0].user_id !== userId) return res.status(403).json({ error: "Forbidden." });
+        if (check.rows[0].user_id !== req.user.id) return res.status(403).json({ error: "Forbidden." });
 
         await db.query("DELETE FROM posts WHERE id = $1", [id]);
         res.status(200).json({ message: "Post deleted successfully." });

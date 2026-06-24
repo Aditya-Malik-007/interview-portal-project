@@ -28,25 +28,23 @@ function Auth({ onLoginSuccess, initialIsLogin }) {
       if (isLogin) {
         const res = await axios.post(
           '/login',
-          { email, password },
-          { withCredentials: true }
+          { email, password }
         );
         setIsError(false);
         setMessage('Logged in successfully! Redirecting...');
         setTimeout(() => {
-          onLoginSuccess(res.data.user);
+          onLoginSuccess(res.data.user, res.data.token);
           navigate('/feed');
         }, 800);
       } else {
         const res = await axios.post(
           '/register',
-          { email, password, branch, name },
-          { withCredentials: true }
+          { email, password, branch, name }
         );
         setIsError(false);
         setMessage('Account created! Redirecting...');
         setTimeout(() => {
-          onLoginSuccess(res.data.user);
+          onLoginSuccess(res.data.user, res.data.token);
           navigate('/feed');
         }, 800);
       }
