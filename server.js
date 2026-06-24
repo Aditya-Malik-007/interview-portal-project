@@ -10,6 +10,11 @@ const app = express();
 const PORT = process.env.PORT || 4000;
 const JWT_SECRET = process.env.JWT_SECRET;
 
+if (!JWT_SECRET) {
+    console.error('FATAL: JWT_SECRET environment variable is not set.');
+    process.exit(1);
+}
+
 const db = new pg.Pool({
     user: process.env.PG_USER,
     host: process.env.PG_HOST,
