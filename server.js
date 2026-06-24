@@ -18,7 +18,7 @@ const db = new pg.Pool({
 });
 
 app.use(cors({
-    origin: 'http://localhost:5173',
+    origin: 'https://interview-portal-project.vercel.app',
     credentials: true
 }));
 app.use(express.json());
